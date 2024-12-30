@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+{% load socialaccount %}
+
+{% block content %}
+    <h2>Вход</h2>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Войти</button>
+    </form>
+
+    <!-- Добавление кнопки для входа через Google -->
+    <div class="mt-3">
+        <button class="btn btn-outline-info">
+            <a href="{% provider_login_url 'google' %}?next={{ request.GET.next|default:'' }}">
+                <i class="fab fa-google"></i> Login with Google
+            </a>
+        </button>
+    </div>
+
+    {% if messages %}
+        <div class="mt-3">
+            {% for message in messages %}
+                <div class="alert alert-info">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}

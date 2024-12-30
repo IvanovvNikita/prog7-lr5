@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="row">
+        <div class="col">
+            <h1>Добро пожаловать на главную страницу!</h1>
+
+            {% if user.is_authenticated %}
+                <p>Вы вошли как: {{ user.username }}</p>
+                <a href="{% url 'logout' %}" class="btn btn-danger">Выход</a>
+                <a href="{% url 'polls:index' %}" class="btn btn-primary">Перейти к опросам</a>
+            {% else %}
+                <p>Вы не авторизованы.</p>
+                <a href="{% url 'login' %}" class="btn btn-success">Войти</a>
+                <a href="{% url 'register' %}" class="btn btn-primary">Зарегистрироваться</a>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends 'polls/base.html' %}
+
+{% block content %}
+  <h1>Детали голосования</h1>
+  
+  <h2>{{ question.question_text }}</h2>
+  
+  <p><strong>Дата проведения:</strong> {{ question.pub_date }}</p>
+
+  <!-- Форма голосования -->
+  <form method="post" action="{% url 'polls:vote' question.id %}">
+    {% csrf_token %}
+    {% for choice in question.choice_set.all %}
+      <input type="radio" id="choice{{ forloop.counter }}" name="choice" value="{{ choice.id }}">
+      <label for="choice{{ forloop.counter }}">{{ choice.choice_text }}</label><br>
+    {% endfor %}
+    <button type="submit">Голосовать</button>
+  </form>
+
+  <hr>
+
+  <!-- Статистика голосования -->
+  <h3>Статистика голосования</h3>
+  <div id="analytics-container">
+    <div id="data-container">
+      <!-- Здесь будут отображаться данные о голосах -->
+      <table id="analytics-table">
+        <thead>
+          <tr>
+            <th>Вариант</th>
+            <th>Количество голосов</th>
+            <th>Процент голосов</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Данные статистики будут добавляться с помощью JavaScript -->
+        </tbody>
+      </table>
+    </div>
+
+    <div id="chart-container">
+      <!-- Здесь будет отображаться график -->
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- Кнопка для экспорта данных в CSV -->
+  <button onclick="exportPollData()">Экспортировать данные в CSV</button>
+
+  <script>
+    // Получаем статистику голосования
+    fetch('/poll_analytics/analytics/{{ question.id }}/')
+      .then(response => response.json())
+      .then(data => {
+        console.log(data);
+        // Отображаем данные в таблице
+        const tableBody = document.querySelector('#analytics-table tbody');
+        let totalVotes = 0;
+
+        // Подсчитываем общее количество голосов
+        data.forEach(item => {
+          totalVotes += item.vote_count;
+        });
+
+        // Заполняем таблицу данными
+        data.forEach(item => {
+          const row = document.createElement('tr');
+          const percentage = (item.vote_count / totalVotes * 100).toFixed(2);
+          row.innerHTML = `
+            <td>${item.choice}</td>
+            <td>${item.vote_count}</td>
+            <td>${percentage}%</td>
+          `;
+          tableBody.appendChild(row);
+        });
+      });
+
+    // Получаем график голосования
+    fetch('/poll_analytics/chart/{{ question.id }}/')
+      .then(response => response.json())
+      .then(data => {
+        // Отображаем график
+        var img = new Image();
+        img.src = 'data:image/png;base64,' + data.chart;
+        document.getElementById('chart-container').appendChild(img);
+      });
+
+    // Функция для экспорта данных в CSV
+    function exportPollData() {
+      window.location.href = '/poll_analytics/export/{{ question.id }}/';
+    }
+  </script>
+{% endblock %}

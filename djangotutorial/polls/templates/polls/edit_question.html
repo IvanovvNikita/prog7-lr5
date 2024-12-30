@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% load crispy_forms_tags %}
+
+{% block content %}
+    <div class="container mt-4">
+        <h1>Редактирование опроса: "{{ question.question_text }}"</h1>
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                {{ form|crispy }}
+            </div>
+            <button type="submit" class="btn btn-warning">Обновить опрос</button>
+        </form>
+    </div>
+{% endblock %}

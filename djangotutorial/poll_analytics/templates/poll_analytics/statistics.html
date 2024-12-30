@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% get_current_language as LANGUAGE_CODE %}
+
+{% block content %}
+<style>
+a.question-link:link, a.question-link:visited {
+    background-color: #f44336;
+    color: white;
+    padding: 15px 25px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+}
+a.question-link:hover, a.question-link:active {
+    background-color: red;
+}
+hr.dates-header {
+    height: 4px;
+    background-color: black;
+    border: none;
+}
+hr.questions-separator {
+    height: 2px;
+    background-color: brown;
+    border: none;
+}
+</style>
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-5" style="border-right: 1px solid #ccc;">
+            <h2>Question List</h2>
+            <div class="form-group">
+                <label for="from-date">From:</label>
+                <input type="date" class="form-control" id="from-date" required>
+            </div>
+            <div class="form-group">
+                <label for="to-date">To:</label>
+                <input type="date" class="form-control" id="to-date" required>
+            </div>
+            {% csrf_token %}
+            <button class="btn btn-primary mt-2" id="submit-btn">Search</button>
+            <hr class="dates-header">
+            <div id="question-list"></div>
+        </div>
+
+        <div class="col-md-7">
+            <h2>Question Statistics</h2>
+            <div id="stats-container"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Функция для обновления контейнера со статистикой
+function updateQuestionStatsContainer(data) {
+    const container = document.getElementById('stats-container');
+    container.innerHTML = '';
+
+    // Вывод общего числа голосов
+    const totalVotes = document.createElement('p');
+    totalVotes.textContent = 'Total Votes: ' + data.total_votes;
+    container.appendChild(totalVotes);
+
+    // Статистика по каждому выбору
+    const choicesList = document.createElement('ul');
+    data.choices.forEach(function(choice) {
+        const choiceItem = document.createElement('li');
+        choiceItem.textContent = `${choice.choice_text} (${choice.percentage}%)`;
+        choicesList.appendChild(choiceItem);
+    });
+    container.appendChild(choicesList);
+
+    // Вывод популярного и непопулярного выбора
+    const mostPopularChoice = document.createElement('p');
+    mostPopularChoice.textContent = 'Most Popular Choice: ' + data.most_popular_choice;
+    const leastPopularChoice = document.createElement('p');
+    leastPopularChoice.textContent = 'Least Popular Choice: ' + data.least_popular_choice;
+    container.appendChild(mostPopularChoice);
+    container.appendChild(leastPopularChoice);
+
+    // Вставка SVG-графика
+    const svgContainer = document.createElement('div');
+    svgContainer.innerHTML = data.histogram_svg;
+    container.appendChild(svgContainer);
+}
+
+// Функция для запроса статистики по вопросу
+function requestQuestionStats(id) {
+    const url = `{% url 'poll_analytics:statistics-question-stats' 999999999999 %}`.replace('999999999999', id);
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        updateQuestionStatsContainer(data);
+    })
+    .catch(() => {
+        console.log('Error occurred while fetching question stats');
+    });
+}
+
+// Обработка загрузки страницы
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date();
+    const fromDate = new Date(today);
+    fromDate.setDate(today.getDate() - 60);
+    const toDate = today.toISOString().split('T')[0];
+
+    document.getElementById('from-date').value = fromDate.toISOString().split('T')[0];
+    document.getElementById('to-date').value = toDate;
+
+    document.getElementById('submit-btn').addEventListener('click', function() {
+        const fromDateValue = document.getElementById('from-date').value;
+        const toDateValue = document.getElementById('to-date').value;
+
+        const data = {
+            'publication-dates': {
+                'from': fromDateValue,
+                'to': toDateValue
+            }
+        };
+
+        fetch('{% url 'poll_analytics:statistics-question-list' %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(response => {
+            const questions = response.questions;
+            const questionList = document.getElementById('question-list');
+            questionList.innerHTML = '';
+
+            questions.forEach(function(question) {
+                const questionHtml = document.createElement('div');
+                questionHtml.classList.add('question');
+
+                const questionLink = document.createElement('a');
+                questionLink.id = `question-${question.id}`;
+                questionLink.classList.add('question-link');
+                questionLink.href = '#';
+                questionLink.textContent = question.question_text;
+                questionLink.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    requestQuestionStats(question.id);
+                });
+
+                const pubDate = new Date(question.pub_date);
+                const formattedDate = pubDate.toLocaleString('{{ LANGUAGE_CODE }}', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    timeZoneName: 'short'
+                });
+
+                const dateDiv = document.createElement('div');
+                dateDiv.style = 'background-color: white; color: black; padding: 10px;';
+                dateDiv.innerHTML = `<p>${formattedDate}</p>`;
+
+                questionHtml.appendChild(questionLink);
+                questionHtml.appendChild(dateDiv);
+
+                const separator = document.createElement('hr');
+                separator.classList.add('questions-separator');
+                questionList.appendChild(questionHtml);
+                questionList.appendChild(separator);
+            });
+        })
+        .catch(error => {
+            console.log('Error occurred:', error);
+        });
+    });
+});
+</script>
+{% endblock %}

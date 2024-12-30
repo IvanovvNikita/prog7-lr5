@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% load crispy_forms_tags %}
+
+{% block content %}
+    <div class="container mt-4">
+        <h1>Создание нового опроса</h1>
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                {{ form|crispy }}
+            </div>
+            <button type="submit" class="btn btn-primary">Создать опрос</button>
+        </form>
+    </div>
+{% endblock %}
