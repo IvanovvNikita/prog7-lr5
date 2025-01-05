@@ -3,7 +3,9 @@
 Микросервисы со статистикой работают по 3 основным путям:
 
 http://127.0.0.1:8000/poll-analytics/statistics/ - главная страница статистики
+
 http://127.0.0.1:8000/poll-analytics/statistics/question-stats/<int:pk>/ - статистика по вопросу
+
 http://127.0.0.1:8000/poll-analytics/export/ - скачивание данных в формате .csv
 
 Пример работы:
