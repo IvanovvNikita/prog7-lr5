@@ -1,121 +1,147 @@
-import plotly.graph_objects as go
-from rest_framework import generics, status
-from rest_framework.response import Response
-from rest_framework.views import APIView
+from datetime import datetime, timedelta
+import io
+import csv
+import matplotlib
+import matplotlib.pyplot as plt
 from django.utils import timezone
+from django.db.models import F, Sum
+from django.shortcuts import get_object_or_404, render, redirect
+from django.http import HttpResponseRedirect, JsonResponse, HttpResponse
+from django.urls import reverse
+from django.views import View, generic
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import parsers, status
 from polls.models import Question, Choice
-from .serializers import QuestionSerializer, ChoiceSerializer
-from django.db.models import Sum
-import plotly.io as pio
-from django.shortcuts import render
-from django.views.generic import TemplateView
+from .serializers import QuestionSerializer
 
-class StatisticsView(TemplateView):
-    template_name = "poll_analytics/statistics.html"
+matplotlib.use('Agg')
 
-# Представление для получения списка всех вопросов
-class QuestionView(generics.ListAPIView):
-    queryset = Question.objects.all()
-    serializer_class = QuestionSerializer
+class QuestionView(APIView):
+    parser_classes = (parsers.JSONParser,)
 
+    def post(self, request, format=None):
+        request_data = request.data
+        date_range_provided = ('publication-dates' in request_data) and \
+                              ('from' in request_data['publication-dates'] and 'to' in request_data['publication-dates'])
 
-# Представление для получения статистики по конкретному вопросу
+        if date_range_provided:
+            publication_dates = request_data['publication-dates']
+            date_from = datetime.strptime(publication_dates['from'], '%Y-%m-%d').replace(hour=0, minute=0, second=0)
+            date_to = datetime.strptime(publication_dates['to'], '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        else:
+            date_now = timezone.now()
+            date_from = (date_now - timedelta(days=60)).replace(hour=0, minute=0, second=0)
+            date_to = date_now.replace(hour=23, minute=59, second=59)
+
+        votes_range = request_data.get('votes-range', {})
+        min_votes = votes_range.get('min', 0)
+        max_votes = votes_range.get('max', float('inf'))
+
+        questions = Question.objects.filter(pub_date__range=[date_from, date_to])
+        questions = questions.annotate(total_votes=Sum('choice__votes')).filter(
+            total_votes__gte=min_votes,
+            total_votes__lte=max_votes
+        )
+
+        question_serializer = QuestionSerializer(questions, many=True)
+
+        response_data = {
+            'publication-dates': {
+                'from': date_from,
+                'to': date_to
+            },
+            'questions': question_serializer.data
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
 class QuestionStatsAPIView(APIView):
-    def get(self, request, pk, *args, **kwargs):
+    def get(self, request, pk):
         try:
             question = Question.objects.get(pk=pk)
         except Question.DoesNotExist:
-            return Response({"error": "Question not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response("Question does not exist", status=status.HTTP_404_NOT_FOUND)
 
         choices = question.choice_set.all()
-        total_votes = choices.aggregate(Sum('votes'))['votes__sum'] or 0
-        
-        choices_data = []
-        labels = []
-        votes = []
-        
-        for choice in choices:
-            labels.append(choice.choice_text)
-            votes.append(choice.votes)
-            if total_votes > 0:
-                percentage = (choice.votes / total_votes) * 100
-            else:
-                percentage = 0
+        total_votes = sum(choice.votes for choice in choices)
 
-            choices_data.append({
+        stats = {
+            'question': question.question_text,
+            'total_votes': total_votes,
+            'choices': []
+        }
+
+        for choice in choices:
+            choice_percentage = (choice.votes / total_votes * 100) if total_votes > 0 else 0
+            stats['choices'].append({
                 'choice_text': choice.choice_text,
                 'votes': choice.votes,
-                'percentage': round(percentage, 2)
+                'percentage': round(choice_percentage, 2)
             })
 
-        # Создаем столбчатую диаграмму с помощью Plotly
-        fig = go.Figure(data=[go.Bar(x=labels, y=votes)])
-        fig.update_layout(
-            title=f"Question: {question.question_text}",
-            xaxis_title="Choices",
-            yaxis_title="Votes",
-            template="plotly_white"
-        )
+        most_popular_choice = max(choices, key=lambda choice: choice.votes)
+        least_popular_choice = min(choices, key=lambda choice: choice.votes)
 
-        # Генерация SVG
-        svg_image = pio.to_image(fig, format='svg')
+        stats['most_popular_choice'] = most_popular_choice.choice_text
+        stats['least_popular_choice'] = least_popular_choice.choice_text
 
-        # Выбор самого популярного и наименее популярного выбора
-        most_popular_choice = max(choices_data, key=lambda c: c['votes'], default={'choice_text': 'N/A'})
-        least_popular_choice = min(choices_data, key=lambda c: c['votes'], default={'choice_text': 'N/A'})
+        fig, ax = plt.subplots()
+        plt.style.use('ggplot')
+        ax.bar([choice.choice_text for choice in choices], [choice.votes for choice in choices])
+        plt.xticks(rotation=20)
+        plt.xlabel('Choices')
+        plt.ylabel('Votes')
+        plt.title('Votes Distribution')
+        plt.subplots_adjust(bottom=0.2)
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='svg')
+        plt.close(fig)
+        buffer.seek(0)
 
-        response_data = {
-            'question_text': question.question_text,
-            'total_votes': total_votes,
-            'choices': choices_data,
-            'most_popular_choice': most_popular_choice['choice_text'],
-            'least_popular_choice': least_popular_choice['choice_text'],
-            'histogram_svg': svg_image.decode('utf-8')  # Возвращаем SVG как строку
-        }
-        
-        return Response(response_data)
+        stats['histogram_svg'] = buffer.getvalue().decode()
 
-# Представление для голосования за выбранный вариант ответа
-class VoteView(APIView):
-    def post(self, request, pk, *args, **kwargs):
-        try:
-            choice = Choice.objects.get(pk=pk)
-        except Choice.DoesNotExist:
-            return Response({"error": "Choice not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(stats)
 
-        choice.votes += 1
-        choice.save()
+class ExportDataView(APIView):
+    def get(self, request, format=None):
+        questions = Question.objects.all()
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="polls_data.csv"'
 
-        return Response({
-            "message": "Vote registered successfully",
-            "choice": choice.choice_text,
-            "votes": choice.votes
-        })
+        writer = csv.writer(response)
+        writer.writerow(['Question', 'Choice', 'Votes'])
 
-# Представление для фильтрации вопросов по дате публикации
-class QuestionFilterByDateView(APIView):
+        for question in questions:
+            for choice in question.choice_set.all():
+                writer.writerow([question.question_text, choice.choice_text, choice.votes])
+
+        return response
+
+class StatisticsView(View):
+    def get(self, request, *args, **kwargs):
+        context = {'message': 'Привет, это GET-запрос!'}
+        return render(request, 'poll_analytics/statistics.html', context)
+
     def post(self, request, *args, **kwargs):
-        data = request.data.get('publication-dates', {})
-        from_date = data.get('from', None)
-        to_date = data.get('to', None)
+        context = {'message': 'Привет, это POST-запрос!'}
+        return render(request, 'poll_analytics/statistics.html', context)
 
-        if not from_date or not to_date:
-            return Response({"error": "Both 'from' and 'to' dates must be provided"},
-                            status=status.HTTP_400_BAD_REQUEST)
+def vote(request, question_id):
+    question = get_object_or_404(Question, pk=question_id)
+    try:
+        selected_choice = question.choice_set.get(pk=request.POST["choice"])
+    except (KeyError, Choice.DoesNotExist):
+        return render(
+            request,
+            "polls/detail.html",
+            {
+                "question": question,
+                "error_message": "You didn't select a choice.",
+            },
+        )
+    else:
+        selected_choice.votes = F("votes") + 1
+        selected_choice.save()
+        return HttpResponseRedirect(reverse("polls:results", args=(question.id,)))
 
-        try:
-            from_date_parsed = timezone.datetime.strptime(from_date, '%Y-%m-%d')
-            to_date_parsed = timezone.datetime.strptime(to_date, '%Y-%m-%d')
-        except ValueError:
-            return Response({"error": "Invalid date format. Expected format: YYYY-MM-DD"},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        # Фильтрация вопросов по дате публикации
-        filtered_questions = Question.objects.filter(pub_date__range=[from_date_parsed, to_date_parsed])
-
-        if not filtered_questions.exists():
-            return Response({"message": "No questions found in the given date range"},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        serializer = QuestionSerializer(filtered_questions, many=True)
-        return Response({"questions": serializer.data})

@@ -1,184 +1,206 @@
 {% extends 'base.html' %}
-{% load i18n %}
-{% get_current_language as LANGUAGE_CODE %}
 
+{% load i18n %}
 {% block content %}
 <style>
-a.question-link:link, a.question-link:visited {
-    background-color: #f44336;
+/* Переопределение стилей для ссылок */
+a.poll-link:link, a.poll-link:visited {
+    background-color: #4CAF50;
     color: white;
-    padding: 15px 25px;
+    padding: 12px 20px;
     text-align: center;
     text-decoration: none;
     display: inline-block;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
-a.question-link:hover, a.question-link:active {
-    background-color: red;
+a.poll-link:hover, a.poll-link:active {
+    background-color: #45a049;
 }
-hr.dates-header {
-    height: 4px;
-    background-color: black;
+
+/* Разделитель для дат */
+hr.date-divider {
+    height: 3px;
+    background-color: #333;
     border: none;
 }
-hr.questions-separator {
-    height: 2px;
-    background-color: brown;
+
+/* Разделитель между вопросами */
+hr.poll-divider {
+    height: 1.5px;
+    background-color: #8B4513;
     border: none;
+}
+
+/* Стиль для панели поиска */
+.search-panel {
+    background-color: #f9f9f9;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Стиль для контейнера с графиками */
+.chart-container {
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Кнопка поиска */
+.btn-search {
+    background-color: #007bff;
+    color: white;
+    border-radius: 5px;
+    padding: 8px 16px;
+    border: none;
+}
+
+.btn-search:hover {
+    background-color: #0056b3;
 }
 </style>
 
 <div class="container">
     <div class="row">
-        <div class="col-md-5" style="border-right: 1px solid #ccc;">
-            <h2>Question List</h2>
-            <div class="form-group">
-                <label for="from-date">From:</label>
-                <input type="date" class="form-control" id="from-date" required>
+        <div class="col-md-5">
+            <div class="search-panel">
+                <h3>Поиск опросов</h3>
+
+                <div class="form-group">
+                    <label for="from-date">С:</label>
+                    <input type="date" class="form-control" id="from-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="to-date">До:</label>
+                    <input type="date" class="form-control" id="to-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="min-votes">Минимальное количество голосов:</label>
+                    <input type="number" class="form-control" id="min-votes" placeholder="Минимум" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="max-votes">Максимальное количество голосов:</label>
+                    <input type="number" class="form-control" id="max-votes" placeholder="Максимум" min="0">
+                </div>
+
+                {% csrf_token %}
+                <button class="btn btn-search mt-2" id="submit-btn">Поиск</button>
             </div>
-            <div class="form-group">
-                <label for="to-date">To:</label>
-                <input type="date" class="form-control" id="to-date" required>
-            </div>
-            {% csrf_token %}
-            <button class="btn btn-primary mt-2" id="submit-btn">Search</button>
-            <hr class="dates-header">
+            <hr class="date-divider">
             <div id="question-list"></div>
         </div>
-
         <div class="col-md-7">
-            <h2>Question Statistics</h2>
-            <div id="stats-container"></div>
+            <h3>Статистика по опросам</h3>
+            <div id="stats-container" class="chart-container"></div>
         </div>
     </div>
 </div>
 
 <script>
-// Функция для обновления контейнера со статистикой
 function updateQuestionStatsContainer(data) {
-    const container = document.getElementById('stats-container');
-    container.innerHTML = '';
+    let container = $('#stats-container');
+    container.empty();
 
-    // Вывод общего числа голосов
-    const totalVotes = document.createElement('p');
-    totalVotes.textContent = 'Total Votes: ' + data.total_votes;
-    container.appendChild(totalVotes);
+    let totalVotes = $('<p>').text('Общее количество голосов: ' + data.total_votes);
+    container.append(totalVotes);
 
-    // Статистика по каждому выбору
-    const choicesList = document.createElement('ul');
-    data.choices.forEach(function(choice) {
-        const choiceItem = document.createElement('li');
-        choiceItem.textContent = `${choice.choice_text} (${choice.percentage}%)`;
-        choicesList.appendChild(choiceItem);
+    let choices = data.choices;
+    let choicesList = $('<ul>');
+    choices.forEach(function(choice) {
+        let choiceItem = $('<li>').text(choice.choice_text + ' (' + choice.percentage + '%)');
+        choicesList.append(choiceItem);
     });
-    container.appendChild(choicesList);
+    container.append(choicesList);
 
-    // Вывод популярного и непопулярного выбора
-    const mostPopularChoice = document.createElement('p');
-    mostPopularChoice.textContent = 'Most Popular Choice: ' + data.most_popular_choice;
-    const leastPopularChoice = document.createElement('p');
-    leastPopularChoice.textContent = 'Least Popular Choice: ' + data.least_popular_choice;
-    container.appendChild(mostPopularChoice);
-    container.appendChild(leastPopularChoice);
+    let mostPopularChoice = $('<p>').text('Самый популярный ответ: ' + data.most_popular_choice);
+    let leastPopularChoice = $('<p>').text('Самый непопулярный ответ: ' + data.least_popular_choice);
+    container.append(mostPopularChoice);
+    container.append(leastPopularChoice);
 
-    // Вставка SVG-графика
-    const svgContainer = document.createElement('div');
-    svgContainer.innerHTML = data.histogram_svg;
-    container.appendChild(svgContainer);
+    let svgImage = $('<div>').html(data.histogram_svg);
+    container.append(svgImage);
 }
 
-// Функция для запроса статистики по вопросу
 function requestQuestionStats(id) {
-    const url = `{% url 'poll_analytics:statistics-question-stats' 999999999999 %}`.replace('999999999999', id);
-    fetch(url, {
-        method: 'GET',
+    let dummyQuestionStatsUrl = '{% url "poll_analytics:statistics-question-stats" 999999999999 %}';
+    let realQuestionStatsUrl = dummyQuestionStatsUrl.replace('999999999999', id);
+    $.ajax({
+        url: realQuestionStatsUrl,
+        type: 'GET',
         headers: {
             'X-CSRFToken': '{{ csrf_token }}'
+        },
+        success: function(data) {
+            updateQuestionStatsContainer(data);
+        },
+        error: function() {
+            console.log('Ошибка при получении статистики');
         }
-    })
-    .then(response => response.json())
-    .then(data => {
-        updateQuestionStatsContainer(data);
-    })
-    .catch(() => {
-        console.log('Error occurred while fetching question stats');
     });
 }
 
-// Обработка загрузки страницы
-document.addEventListener('DOMContentLoaded', function() {
-    const today = new Date();
-    const fromDate = new Date(today);
+$(document).ready(function() {
+    let today = new Date();
+    let fromDate = new Date(today);
     fromDate.setDate(today.getDate() - 60);
-    const toDate = today.toISOString().split('T')[0];
+    let toDate = today.toISOString().split('T')[0];
 
-    document.getElementById('from-date').value = fromDate.toISOString().split('T')[0];
-    document.getElementById('to-date').value = toDate;
+    $('#from-date').val(fromDate.toISOString().split('T')[0]);
+    $('#to-date').val(toDate);
 
-    document.getElementById('submit-btn').addEventListener('click', function() {
-        const fromDateValue = document.getElementById('from-date').value;
-        const toDateValue = document.getElementById('to-date').value;
+    $('#submit-btn').click(function() {
+        let fromDate = $('#from-date').val();
+        let toDate = $('#to-date').val();
+        let minVotes = $('#min-votes').val();
+        let maxVotes = $('#max-votes').val();
 
-        const data = {
+        let data = {
             'publication-dates': {
-                'from': fromDateValue,
-                'to': toDateValue
+                'from': fromDate,
+                'to': toDate
+            },
+            'votes-range': {
+                'min': minVotes || 0,
+                'max': maxVotes || Number.MAX_SAFE_INTEGER
             }
         };
 
-        fetch('{% url 'poll_analytics:statistics-question-list' %}', {
-            method: 'POST',
+        $.ajax({
+            url: '{% url "poll_analytics:statistics-question-list" %}',
+            type: 'POST',
             headers: {
-                'X-CSRFToken': '{{ csrf_token }}',
-                'Content-Type': 'application/json'
+                'X-CSRFToken': '{{ csrf_token }}'
             },
-            body: JSON.stringify(data)
-        })
-        .then(response => response.json())
-        .then(response => {
-            const questions = response.questions;
-            const questionList = document.getElementById('question-list');
-            questionList.innerHTML = '';
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            success: function(response) {
+                let questions = response.questions;
+                $('#question-list').empty();
 
-            questions.forEach(function(question) {
-                const questionHtml = document.createElement('div');
-                questionHtml.classList.add('question');
+                questions.forEach(function(question) {
+                    let questionHtml = '<div class="question">';
+                    questionHtml += `<h5><a id="question-${question.id}" class="poll-link" href="#" onclick="requestQuestionStats(${question.id}); return false;">${question.question_text}</a></h5>`;
 
-                const questionLink = document.createElement('a');
-                questionLink.id = `question-${question.id}`;
-                questionLink.classList.add('question-link');
-                questionLink.href = '#';
-                questionLink.textContent = question.question_text;
-                questionLink.addEventListener('click', function(event) {
-                    event.preventDefault();
-                    requestQuestionStats(question.id);
+                    let pubDate = new Date(question.pub_date);
+                    let formattedDate = pubDate.toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                    questionHtml += '<div class="question-meta"><p>' + formattedDate + '</p></div>';
+                    questionHtml += '</div><hr class="poll-divider">';
+
+                    $('#question-list').append(questionHtml);
                 });
-
-                const pubDate = new Date(question.pub_date);
-                const formattedDate = pubDate.toLocaleString('{{ LANGUAGE_CODE }}', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    timeZoneName: 'short'
-                });
-
-                const dateDiv = document.createElement('div');
-                dateDiv.style = 'background-color: white; color: black; padding: 10px;';
-                dateDiv.innerHTML = `<p>${formattedDate}</p>`;
-
-                questionHtml.appendChild(questionLink);
-                questionHtml.appendChild(dateDiv);
-
-                const separator = document.createElement('hr');
-                separator.classList.add('questions-separator');
-                questionList.appendChild(questionHtml);
-                questionList.appendChild(separator);
-            });
-        })
-        .catch(error => {
-            console.log('Error occurred:', error);
+            },
+            error: function(xhr, status, error) {
+                console.error('Ошибка:', error);
+            }
         });
     });
 });
